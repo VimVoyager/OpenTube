@@ -13,7 +13,7 @@ OpenTube is video streaming platform that utilises the NewPipe Extractor to acce
 
 ## Architecture Overview
 
-![OpenTube Archiecture](opentube-architecture.drawio.png)
+![OpenTube Archiecture](opentube-architecture.png)
 
 ## Deployment Options
 
