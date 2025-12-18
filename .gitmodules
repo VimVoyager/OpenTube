@@ -1,0 +1,9 @@
+[submodule "NewPipeExtractorApi"]
+	path = NewPipeExtractorApi
+	url = git@github.com:VimVoyager/NewPipeExtractorAPI.git
+[submodule "OpenTube-Frontend"]
+	path = OpenTube-Frontend
+	url = git@github.com:VimVoyager/OpenTube-Frontend.git
+[submodule "OpenTubeStreamProxy"]
+	path = OpenTubeStreamProxy
+	url = git@github.com:VimVoyager/OpenTubeStreamProxy.git
