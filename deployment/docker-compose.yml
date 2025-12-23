@@ -1,0 +1,60 @@
+version: '3.8'
+
+services:
+  frontend:
+    image: opentube-frontend:latest
+    build:
+      context: ../OpenTube-Frontend/
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      - PUBLIC_PROXY_URL=http://proxy:8081
+      - PUBLIC_API_URL=http://backend:8080
+      - NODE_ENV=production
+    depends_on:
+      - proxy
+      - backend
+    restart: unless-stopped
+    networks:
+      - opentube-network
+
+  proxy:
+    image: opentube-proxy:latest
+    build:
+      context: ../OpenTubeStreamProxy/
+      dockerfile: Dockerfile
+    ports:
+      - "8081:8081"
+    environment:
+      - BACKEND_URL=http://backend:8080
+      - PORT=8081
+    depends_on:
+      - backend
+    restart: unless-stopped
+    networks:
+      - opentube-network
+
+  backend:
+    image: opentube-backend:latest
+    build:
+      context: ../NewPipeExtractorApi/
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"
+    environment:
+      - SPRING_PROFILES_ACTIVE=production
+      - SERVER_PORT=8080
+    volumes:
+      - backend-data:/app/data
+    restart: unless-stopped
+    networks:
+      - opentube-network
+
+volumes:
+  backend-data:
+    driver: local
+
+networks:
+  opentube-network:
+    driver: bridge
