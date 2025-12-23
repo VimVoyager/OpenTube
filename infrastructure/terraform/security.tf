@@ -39,6 +39,24 @@ resource "aws_security_group" "opentube" {
     cidr_blocks = [var.allowed_ssh_cidr]
   }
 
+  # Backend API (optional, for development)
+  ingress {
+    description = "Backend API"
+    from_port   = 8080
+    to_port     = 8080
+    protocol    = "tcp"
+    cidr_blocks = [var.allowed_ssh_cidr]
+  }
+
+  # Stream Proxy (optional, for development)
+  ingress {
+    description = "Stream Proxy"
+    from_port   = 8081
+    to_port     = 8081
+    protocol    = "tcp"
+    cidr_blocks = [var.allowed_ssh_cidr]
+  }
+
   # Outbound internet access
   egress {
     description = "Allow all outbound"
