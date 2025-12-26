@@ -1,7 +1,7 @@
 resource "aws_security_group" "opentube" {
   name        = "${var.project_name}-sg"
   description = "Security group for OpenTube application"
-  vpc_id      = data.aws_vpc.default.id
+  vpc_id      = aws_vpc.opentube.id
 
   # SSH access
   ingress {
@@ -28,33 +28,6 @@ resource "aws_security_group" "opentube" {
     to_port     = 443
     protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  # SvelteKit dev port (optional, for development)
-  ingress {
-    description = "SvelteKit Dev"
-    from_port   = 5173
-    to_port     = 5173
-    protocol    = "tcp"
-    cidr_blocks = [var.allowed_ssh_cidr]
-  }
-
-  # Backend API (optional, for development)
-  ingress {
-    description = "Backend API"
-    from_port   = 8080
-    to_port     = 8080
-    protocol    = "tcp"
-    cidr_blocks = [var.allowed_ssh_cidr]
-  }
-
-  # Stream Proxy (optional, for development)
-  ingress {
-    description = "Stream Proxy"
-    from_port   = 8081
-    to_port     = 8081
-    protocol    = "tcp"
-    cidr_blocks = [var.allowed_ssh_cidr]
   }
 
   # Outbound internet access

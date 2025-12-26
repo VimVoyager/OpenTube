@@ -16,10 +16,10 @@ services:
         - opentube-network
 
   frontend:
-    image: opentube-frontend:latest
+    image: opentube-frontend:dev
     build:
       context: ../OpenTube-Frontend
-      dockerfile: dockerfile.prod
+      dockerfile: dockerfile.dev
     expose:
       - "3000"
     depends_on:
@@ -30,7 +30,7 @@ services:
       - opentube-network
 
   proxy:
-    image: opentube-proxy:latest
+    image: opentube-proxy:dev
     build:
       context: ../OpenTubeStreamProxy
       dockerfile: dockerfile
@@ -41,7 +41,7 @@ services:
       - opentube-network
 
   backend:
-    image: opentube-backend:latest
+    image: opentube-backend:dev
     build:
       context: ../NewPipeExtractorApi
       dockerfile: dockerfile
