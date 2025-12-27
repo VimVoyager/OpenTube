@@ -1,41 +1,30 @@
-version: '3.8'
+# Local deployment with system Nginx
+# Services expose ports to host for Nginx to access
 
 services:
-  nginx:
-      image: nginx:alpine
-      ports:
-        - "80:80"
-      volumes:
-        - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
-      depends_on:
-        - frontend
-        - backend
-        - proxy
-      restart: unless-stopped
-      networks:
-        - opentube-network
-
   frontend:
     image: opentube-frontend:latest
     build:
       context: ../OpenTube-Frontend
       dockerfile: dockerfile.prod
-    expose:
-      - "3000"
+    ports:
+      - "3100:3000"
     depends_on:
       - proxy
       - backend
     restart: unless-stopped
     networks:
       - opentube-network
+    environment:
+      - NODE_ENV=production
 
   proxy:
     image: opentube-proxy:latest
     build:
       context: ../OpenTubeStreamProxy
-      dockerfile: dockerfile
-    expose:
-      - "8081"
+      dockerfile: Dockerfile
+    ports:
+      - "8181:8081"
     restart: unless-stopped
     networks:
       - opentube-network
@@ -44,14 +33,16 @@ services:
     image: opentube-backend:latest
     build:
       context: ../NewPipeExtractorApi
-      dockerfile: dockerfile
-    expose:
-      - "8080"
+      dockerfile: Dockerfile
+    ports:
+      - "8180:8080"
     volumes:
       - backend-data:/app/data
     restart: unless-stopped
     networks:
       - opentube-network
+    environment:
+      - JAVA_OPTS=-Xmx512m -Xms256m
 
 volumes:
   backend-data:
