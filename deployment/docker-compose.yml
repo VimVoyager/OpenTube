@@ -1,17 +1,38 @@
-# Production deployment with system Nginx
-# Services expose ports to host for Nginx to proxy
-
 services:
+  # ── Reverse proxy ────────────────────────────────────────────────────────────
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+      # - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - /dev/null:/etc/nginx/conf.d/default.conf:ro
+      # - ./certs:/etc/nginx/certs:ro
+    depends_on:
+      - frontend
+      - backend
+      - proxy
+    restart: unless-stopped
+    networks:
+      - opentube-network
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+ 
+  # ── SvelteKit frontend ────────────────────────────────────────────────────────
   frontend:
     image: opentube-frontend:latest
     build:
       context: ../OpenTube-Frontend
-      dockerfile: dockerfile
-    ports:
-      - "3100:3000"
+      dockerfile: Dockerfile
+    expose:
+      - "3000"
     depends_on:
-      - proxy
       - backend
+      - proxy
     restart: unless-stopped
     networks:
       - opentube-network
@@ -25,14 +46,15 @@ services:
       timeout: 10s
       retries: 3
       start_period: 40s
-
+ 
+  # ── Go stream proxy ───────────────────────────────────────────────────────────
   proxy:
     image: opentube-proxy:latest
     build:
       context: ../OpenTubeStreamProxy
-      dockerfile: dockerfile
-    ports:
-      - "8181:8081"
+      dockerfile: Dockerfile
+    expose:
+      - "8081"
     restart: unless-stopped
     networks:
       - opentube-network
@@ -44,14 +66,15 @@ services:
       timeout: 10s
       retries: 3
       start_period: 20s
-
+ 
+  # ── Spring Boot API ───────────────────────────────────────────────────────────
   backend:
     image: opentube-backend:latest
     build:
       context: ../NewPipeExtractorApi
-      dockerfile: dockerfile
-    ports:
-      - "8180:8080"
+      dockerfile: Dockerfile
+    expose:
+      - "8080"
     volumes:
       - backend-data:/app/data
     restart: unless-stopped
@@ -66,11 +89,11 @@ services:
       timeout: 10s
       retries: 5
       start_period: 60s
-
+ 
 volumes:
   backend-data:
     driver: local
-
+ 
 networks:
   opentube-network:
     driver: bridge
