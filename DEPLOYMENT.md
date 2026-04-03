@@ -136,19 +136,19 @@ Run all command from inside the `deployment/` directory.
 **1. Build all images and start the stack:**
 
 ```bash
-docker compose up -d --build
+docker-compose up -d --build
 ```
 
 **2. Watch startup logs:**
 
 ```bash
-docker compose logs -f
+docker-compose logs -f
 ```
 
 **3. Check container** (~60 seconds on first start - the JVM needs time to warm up):
 
 ```bash
-docker compose ps
+docker-compose ps
 ```
 
 All services should show `(healthy)`. Once they do, open **http://localhost** in your browser.
@@ -173,7 +173,7 @@ curl "http://localhost/api/v1/search?searchString=test"
 
 Tail logs for a specific services:
 ```bash
-docker compose logs -f backend
+docker-compose logs -f backend
 ```
 
 ---
@@ -198,12 +198,12 @@ docker compose logs -f backend
             <tr>
                   <td>Backend stuck on <code>(health: starting)</code></td>
                   <td>Normal — JVM + NewPipe Extractor take &gt;60s to initialise on first start</td>
-                  <td>Wait up to 90s. If still failing: <code>docker compose logs backend --tail 100</code></td>
+                  <td>Wait up to 90s. If still failing: <code>docker-compose logs backend --tail 100</code></td>
             </tr>
             <tr>
                   <td>Code changes not reflected after restart</td>
                   <td>Docker uses cached image layers — restarting doesn't rebuild</td>
-                  <td><code>docker compose build frontend</code> (or <code>backend</code> / <code>proxy</code>), then <code>docker compose up -d</code></td>
+                  <td><code>docker-compose build frontend</code> (or <code>backend</code> / <code>proxy</code>), then <code>docker-compose up -d</code></td>
             </tr>
       </tbody>
 </table>
