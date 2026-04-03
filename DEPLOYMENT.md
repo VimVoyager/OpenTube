@@ -1,383 +1,225 @@
-# OpenTube Local Deployment Guide
+# OpenTube - Local Deployment Guide
 
-Complete guide for deploying OpenTube on your local machine or home server.
+> A self-hosted YouTube frontend built with SvelteKit, Spring boot, and  a Go stream proxy - orchestrated with Docker Compose
 
-
-## Table of Contents
-
-- [Overview](#overview)
-- [Prerequisites](#prerequisites)
-- [Quick Start](#quick-start)
-- [Using the Deployment Script](#using-the-deployment-script)
-- [Using the Management Script](#using-the-management-script)
-- [Common Operations](#common-operations)
-
-
-## Overview
-
-OpenTube provides a fully automated deployment system that handles:
-
- - **Automated dependency installation** - Docker, Nginx, Avahi, OpenSSL
- - **Multi-environment support** - Works on Arch, Ubuntu, Debian, Fedora, and more
- - **SSL/HTTPS support** - Automatic certificate generation
- - **mDNS configuration** - Access via friendly `.local` domains names
-
+---
 
 ## Prerequisites
 
- - Docker
- - Docker Compose
- - Nginx
- - Avahi (mDNS)
- - OpenSSL
+<table>
+    <thead>
+        <tr><th>Tool</th><th>Min. Version</th><th>Purpose</th></tr>
+    </thead>
+    <tbody>
+        <tr><td><a href="https://docs.docker.com/get-docker/">Docker</a></td><td>24.x</td><td>Container runtime</td></tr>
+        <tr><td><a href="https://docs.docker.com/compose/install/">Docker Compose</a></td><td>2.x</td><td>Multi-container orchestration</td></tr>
+        <tr><td><a href="https://git-scm.com/">Git</a></td><td>Any</td><td>Cloning repositories</td></tr>
+    </tbody>
+</table>
 
- These will **automatically be installed** if missing.
+---
 
+## Repository Structure
 
-## Quick Start
+OpenTube is split across multiple respositories. They must all be cloned **side by side** in the same parent directory - the `docker-compose.yml` uses relative paths to reference them.
 
-### 1. Navigate to the deployment directory
+```parent/
+├── deployment/              ← This repo (docker-compose.yml lives here)
+├── OpenTube-Frontend/       ← SvelteKit frontend
+├── NewPipeExtractorApi/     ← Spring Boot backend
+└── OpenTubeStreamProxy/     ← Go stream proxy
+```
+
+Clone all four into the same parent folder:
 
 ```bash
-cd deployment/
+git clone --recurse-submodules --depth 1 https://github.com/VimVoyager/NewPipeExtractorAPI.git
 ```
 
-### 2. Deploy the application
+>⚠️ **Folder names matter.** The build contexts in `docker-compose.yml` reference paths like `../OpenTube-Frontend`. If a repo is cloned under a different name, the build will fail.
 
-#### Production mode
+---
+
+## Services Overview
+
+All traffic enters through nginx on port 80 and is routed internally by Docker service name
+
+<table>
+    <thead>
+        <tr><th>Service</th><th>Internal Port</th><th>Technology</th><th>Description</th></tr>
+    </thead>
+    <tbody>
+        <tr><td><code>nginx</code></td><td>80 (host-exposed)</td><td>nginx:alpine</td><td>Reverse proxy — single entry point</td></tr>
+        <tr><td><code>frontend</code></td><td>3000</td><td>SvelteKit / Node</td><td>Server-side rendered frontend</td></tr>
+        <tr><td><code>backend</code></td><td>8080</td><td>Spring Boot</td><td>NewPipe Extractor API</td></tr>
+        <tr><td><code>proxy</code></td><td>8081</td><td>Go / Gin</td><td>YouTube stream proxy</td></tr>
+    </tbody>
+</table>
+
+```
+Browser → nginx:80 → frontend:3000
+                   → backend:8080   (/api/)
+                   → proxy:8081     (/proxy/)
+```
+
+## Configuration
+
+### nginx
+
+Create `deployment/nginx/nginx.conf` before starting the stack. A minimal working config:
+
+```nginx
+events {}
+ 
+http {
+    server {
+        listen 80;
+ 
+        location /health {
+            return 200 'ok';
+            add_header Content-Type text/plain;
+        }
+ 
+        location /api/ {
+            proxy_pass         http://backend:8080/;
+            proxy_set_header   Host $host;
+            proxy_read_timeout 30s;
+        }
+ 
+        location /proxy/ {
+            proxy_pass       http://proxy:8081/;
+            proxy_set_header Host $host;
+        }
+ 
+        location / {
+            proxy_pass       http://frontend:3000;
+            proxy_set_header Host $host;
+        }
+    }
+}
+```
+
+> ℹ️ Always use Docker service names (`frontend`, `backend`, `proxy`) as upstream hostnames — never hardcoded IPs. Container IPs change on every restart.
+
+### Frontend environment variables
+
+<table>
+    <thead>
+        <tr><th>Variable</th><th>Value</th><th>Description</th></tr>
+    </thead>
+    <tbody>
+        <tr><td><code>PORT</code></td><td><code>3000</code></td><td>Port the SvelteKit node server binds to</td></tr>
+        <tr><td><code>NODE_ENV</code></td><td><code>production</code></td><td>Enables production mode</td></tr>
+        <tr><td><code>PUBLIC_API_URL</code></td><td><code>/api</code></td><td>nginx path proxied to the backend</td></tr>
+        <tr><td><code>PUBLIC_PROXY_URL</code></td><td><code>/proxy</code></td><td>nginx path proxied to the stream proxy</td></tr>
+    </tbody>
+</table>
+
+### Backend environment variables
+
+<table>
+    <thead>
+        <tr><th>Variable</th><th>Value</th><th>Description</th></tr>
+    </thead>
+    <tbody>
+        <tr><td><code>SPRING_PROFILES_ACTIVE</code></td><td><code>prod</code></td><td>Activates the production Spring profile</td></tr>
+        <tr><td><code>JAVA_OPTS</code></td><td><code>-Xmx1g -Xms512m ...</code></td><td>JVM memory and GC tuning</td></tr>
+    </tbody>
+</table>
+
+---
+
+## Building & Starting
+
+Run all command from inside the `deployment/` directory.
+
+**1. Build all images and start the stack:**
+
 ```bash
-# Production deployment with HTTP
-./deploy.sh production
-
-# Production deployment with HTTPS
-./deploy.sh production ssl_true
+docker compose up -d --build
 ```
 
-#### Development mode
-```bash
-./deploy.sh development
-```
-
-You can run production and development mode simultaneously.
-
-### 3. Access OpenTube
-
-Open your browser and navigate to:
-  - **http://opentube.local** (or https://opentube.local if SSL enabled)
-  - **http://localhost**
-
-For development mode access each service here:
-  - http://opentube.local
-  - http://localhost:3200 (direct frontend access)
-  - http://localhost:8280 (direct backend access)
-  - localhost:5005 (debugger)
-
-
-## Using the Deployment Script
-The `deploy.sh` script is your main deployment tool.
+**2. Watch startup logs:**
 
 ```bash
-./deploy.sh <environment> [ssl_option] [domain]
+docker compose logs -f
 ```
 
-  1. **environment** (required)
-    - `production` or `prod` - Production deployment
-    - `development` or `dev` - Development deployment
-
-  2. **ssl_options** (optional)
-    - `ssl_true` or `true` - Enable HTTPS
-    - `ssl_false` or `false` - Use HTTP (default)
-
-  3. **domain** (optional)
-    - Custom domain name (default: `opentube.local`)
-
-
-## Using the Management Script
-
-The `manage.sh` script provides convenient commands for daily operations.
-
-### Available Commands
-
-#### Service Control
+**3. Check container** (~60 seconds on first start - the JVM needs time to warm up):
 
 ```bash
-./manage.sh start          # Start all services
-./manage.sh stop           # Stop all services
-./manage.sh restart        # Restart all services
-./manage.sh status         # Show detailed service status
+docker compose ps
 ```
 
-#### Logging
+All services should show `(healthy)`. Once they do, open **http://localhost** in your browser.
+
+---
+
+## Verifying the Stack
+
+Test the nginx health endpoint:
 
 ```bash
-./manage.sh logs               # View all logs (live tail)
-./manage.sh logs-frontend      # Frontend logs only
-./manage.sh logs-backend       # Backend logs only
-./manage.sh logs-proxy         # Proxy logs only
-./manage.sh logs-nginx         # Nginx logs (system journal)
+curl http://localhost/health
+# Expected: ok
 ```
 
-#### Maintenance
+Test the backend API through nginx
 
 ```bash
-./manage.sh rebuild        # Rebuild all images and restart
-./manage.sh update         # Pull latest base images and rebuild
-./manage.sh clean          # Remove containers (keeps data)
-./manage.sh reset          # Remove everything including data
-./manage.sh backup         # Backup backend data
+curl "http://localhost/api/v1/search?searchString=test"
+# Expected: JSON array of search results
 ```
 
-#### Debugging
-
+Tail logs for a specific services:
 ```bash
-./manage.sh test               # Test all endpoints
-./manage.sh shell-frontend     # Open shell in frontend container
-./manage.sh shell-backend      # Open shell in backend container
-./manage.sh shell-proxy        # Open shell in proxy container
+docker compose logs -f backend
 ```
 
-### Command Examples
+---
 
-**1. Check Service Status:**
-```bash
-./manage.sh status
-```
-Output:
-```
-Service Status:
+## Common Issues
 
-Docker Services:
-NAME                    STATUS         PORTS
-opentube-frontend-1     Up (healthy)   0.0.0.0:3100->3000/tcp
-opentube-backend-1      Up (healthy)   0.0.0.0:8180->8080/tcp
-opentube-proxy-1        Up (healthy)   0.0.0.0:8181->8081/tcp
+<table>
+      <thead>
+            <tr><th>Symptom</th><th>Cause</th><th>Fix</th></tr>
+      </thead>
+      <tbody>
+            <tr>
+                  <td>Frontend/nginx <code>(unhealthy)</code>, 502 errors</td>
+                  <td>SvelteKit not binding to the declared port — healthcheck always fails</td>
+                  <td>Ensure <code>PORT=3000</code> is set in the frontend service environment</td>
+            </tr>
+            <tr>
+                  <td><code>Connection reset by peer</code> in backend logs</td>
+                  <td>nginx closing the upstream connection before the backend finishes — timeout too short</td>
+                  <td>Add <code>proxy_read_timeout 30s;</code> to the <code>/api/</code> location block in nginx.conf</td>
+            </tr>
+            <tr>
+                  <td>Backend stuck on <code>(health: starting)</code></td>
+                  <td>Normal — JVM + NewPipe Extractor take &gt;60s to initialise on first start</td>
+                  <td>Wait up to 90s. If still failing: <code>docker compose logs backend --tail 100</code></td>
+            </tr>
+            <tr>
+                  <td>Code changes not reflected after restart</td>
+                  <td>Docker uses cached image layers — restarting doesn't rebuild</td>
+                  <td><code>docker compose build frontend</code> (or <code>backend</code> / <code>proxy</code>), then <code>docker compose up -d</code></td>
+            </tr>
+      </tbody>
+</table>
 
-Nginx Status:
-● nginx.service - A high performance web server
-     Active: active (running)
+---
 
-Avahi Status:
-● avahi-daemon.service - Avahi mDNS/DNS-SD Stack
-     Active: active (running)
-```
+##  Quick Reference
 
-**2. View Logs:**
-```bash
-# All logs (follows in real-time)
-./manage.sh logs
-
-# Backend only
-./manage.sh logs-backend
-
-# Last 100 lines
-docker-compose -f docker-compose.active.yml logs --tail=100
-```
-
-**3. Restart Services:**
-```bash
-# Quick restart (keeps containers)
-./manage.sh restart
-
-# Full rebuild (after code changes)
-./manage.sh rebuild
-```
-
-**4. Test Deployment:**
-```bash
-./manage.sh test
-```
-Output:
-```
-Testing endpoints...
-
-Testing health endpoint...
-✓ Health check passed
-
-Testing backend API...
-✓ Backend API responding
-
-Testing frontend...
-✓ Frontend responding
-
-Testing domain resolution...
-✓ opentube.local resolves
-
-Access URLs:
-  Primary:  http://opentube.local
-  Local:    http://localhost
-```
-
-**5. Backup Data:**
-```bash
-./manage.sh backup
-```
-Output:
-```
-Creating backup: opentube-backup-20241229-143022.tar.gz
-✓ Backup created: opentube-backup-20241229-143022.tar.gz
-```
-
-**6. Access Container Shell:**
-```bash
-# Backend container
-./manage.sh shell-backend
-
-# Now you're inside the container
-ls -la /app
-ps aux
-exit
-```
-
-**7. Update Images:**
-```bash
-./manage.sh update
-```
-This will:
-- Pull latest base images (node, maven, golang)
-- Rebuild all application images
-- Restart services with new images
-
-
-## Common Operations
-
-### Daily Operations
-
-**Check status:**
-```bash
-./manage.sh status
-```
-
-**View logs:**
-```bash
-./manage.sh logs
-```
-
-**Restart after system reboot:**
-```bash
-# Services auto-start on boot, but if needed:
-./manage.sh start
-```
-
-### After Code Changes
-
-**1. Frontend changes:**
-```bash
-# Development (auto-reload)
-# Just save files - changes appear immediately
-
-# Production
-./manage.sh rebuild
-```
-
-**2. Backend changes:**
-```bash
-# Development
-docker-compose -f docker-compose.dev.yml restart backend
-
-# Production
-./manage.sh rebuild
-```
-
-**3. Proxy changes:**
-```bash
-./manage.sh rebuild
-```
-
-### Updating OpenTube
-
-**Get latest code:**
-```bash
-cd /path/to/opentube
-git pull
-```
-
-**Rebuild and restart:**
-```bash
-cd deployment
-./manage.sh rebuild
-```
-
-**Or update base images:**
-```bash
-./manage.sh update
-```
-
-### Backup and Restore
-
-**Create backup:**
-```bash
-./manage.sh backup
-# Creates: opentube-backup-YYYYMMDD-HHMMSS.tar.gz
-```
-
-**Restore from backup:**
-```bash
-# Stop services
-./manage.sh stop
-
-# Restore
-docker run --rm \
-  -v deployment_backend-data:/data \
-  -v $(pwd):/backup \
-  ubuntu tar xzf /backup/opentube-backup-YYYYMMDD-HHMMSS.tar.gz -C /
-
-# Start services
-./manage.sh start
-```
-
-**Automated backups (cron):**
-```bash
-# Edit crontab
-crontab -e
-
-# Add daily backup at 2 AM
-0 2 * * * cd /path/to/opentube/deployment && ./manage.sh backup
-
-# Keep only last 7 days
-0 3 * * * find /path/to/opentube/deployment -name "opentube-backup-*.tar.gz" -mtime +7 -delete
-```
-
-### Switching Environments
-
-**From production to development:**
-```bash
-# Stop production
-docker-compose -f docker-compose.prod.yml down
-
-# Start development
-./deploy.sh development
-```
-
-**Running both:**
-```bash
-# They use different ports, so both can run simultaneously
-./deploy.sh production    # Ports 3100/8180/8181
-./deploy.sh development   # Ports 3200/8280/8281
-```
-
-### Cleanup
-
-**Remove containers (keep data):**
-```bash
-./manage.sh clean
-```
-
-**Remove everything (including data):**
-```bash
-./manage.sh reset
-```
-
-**Clean Docker system:**
-```bash
-# Remove unused images
-docker image prune -a
-
-# Remove unused volumes (CAUTION!)
-docker volume prune
-
-# Remove everything unused
-docker system prune -af --volumes
-```
-
-
-
+<table>
+      <thead>
+            <tr><th>What</th><th>URL</th></tr>
+      </thead>
+      <tbody>
+            <tr><td>OpenTube UI</td><td><a href="http://localhost">http://localhost</a></td></tr>
+            <tr><td>Backend API (via nginx)</td><td><a href="http://localhost/api/v1/">http://localhost/api/v1/</a></td></tr>
+            <tr><td>Stream proxy (via nginx)</td><td><a href="http://localhost/proxy/">http://localhost/proxy/</a></td></tr>
+            <tr><td>Health check</td><td><a href="http://localhost/health">http://localhost/health</a></td></tr>
+      </tbody>
+</table>
